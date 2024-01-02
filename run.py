@@ -27,7 +27,7 @@ def sh(cmd: str, retval_expected: int = 0) -> None:
     return None
 
 
-def parseFile(f: str) -> dict[str, set[str]]:
+def parseFile(f: str) -> dict[str, tuple[set[str], int]]:
     if not os.path.isfile(f):
         raise Exception(f)
     with open(f, "r") as fp:
@@ -41,22 +41,26 @@ def parseFile(f: str) -> dict[str, set[str]]:
         if len(parts) != 3:
             raise Exception("Format error")
         firstName, gender, freq = parts
+        freq = int(freq)
         if firstName in data.keys():
-            data[firstName].add(gender.upper())
+            curr_genders, curr_freq = data[firstName]
+            data[firstName] = (curr_genders | set(gender.upper()), curr_freq + freq)
         else:
-            data[firstName] = {gender.upper()}
+            data[firstName] = ({gender.upper()}, freq)
     return data
 
 
-def parseData() -> dict[str, set[str]]:
-    data: dict[str, set[str]] = {}
+def parseData() -> dict[str, tuple[set[str], int]]:
+    data = {}
     files = list(sorted(os.listdir("temp")))
     for i, f in enumerate(files):
         print(f"{f} {int(i * 100.0/len(files))}%")
         new_data = parseFile(f=join("temp", f))
         for k, v in new_data.items():
+            new_genders, new_freq = v
             if k in data.keys():
-                data[k] = data[k].union(v)
+                curr_genders, curr_freq = data[k]
+                data[k] = (curr_genders.union(new_genders), curr_freq + new_freq)
             else:
                 data[k] = v
     return data
@@ -70,14 +74,26 @@ def main():
     sh("unzip -d temp names.zip")
     data = parseData()
 
-    # multi_gender_names = [n for n, genders in data.items() if len(genders) > 1]
-    male_names = [n for n, genders in data.items() if "M" in genders]
-    male_names = list(sorted(list(set(male_names))))
-    print(male_names)
-    with open("male_names.txt", "w+") as fp:
-        for n in male_names:
-            fp.write(n)
-            fp.write("\n")
+    m = lambda x: "M" in x
+    f = lambda x: "F" in x
+    multi = lambda x: len(x) > 1
+
+    for cond, filename in [
+        (m, "male_names.txt"),
+        (f, "female_names.txt"),
+        (multi, "unisex_names.txt"),
+    ]:
+        names = [n for n, (genders, freq) in data.items() if cond(genders)]
+        names_uniq = list(sorted(list(set(names))))
+        with open(filename, "w+") as fp:
+            for n in names_uniq:
+                fp.write(n)
+                fp.write("\n")
+        names_count = {n: freq for n, (genders, freq) in data.items() if cond(genders)}
+        with open(f"{filename}.count", "w+") as fp:
+            for name in sorted(names_count, key=names_count.get, reverse=True):
+                count = names_count[name]
+                fp.write(f"{count}\t{name}\n")
 
 
 if __name__ == "__main__":
